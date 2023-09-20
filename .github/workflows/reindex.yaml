@@ -1,0 +1,35 @@
+name: Reindex
+
+on:
+  release:
+    types: [released]
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  pages: write
+  contents: read
+
+jobs:
+  reindex:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install dependencies
+        run: |
+          sudo snap install yq
+      - name: Generate Helm repository index.yaml
+        run: |
+          curl -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+               -H "X-GitHub-Api-Version: 2022-11-28" \
+               "https://api.github.com/repos/${{ github.repository }}/releases" | \
+            yq -P '{ "apiVersion": "v1", "entries": { "betterstack-logs": . | map({ "name": "betterstack-logs", "urls": [ .assets[0].browser_download_url ], "version": .tag_name }) } }' >index.yaml
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v2
+        with:
+          path: '.'
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v2

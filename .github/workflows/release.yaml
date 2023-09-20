@@ -1,0 +1,32 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      - name: Ensure that chart version in YAML is the same as release tag
+        run: |
+          sed -i "s/^version: .*/version: ${GITHUB_REF#refs\/tags\/v}/" Chart.yaml
+          git diff --exit-code
+      - name: Install Helm
+        uses: azure/setup-helm@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Update chart dependencies
+        run: helm dependency update
+      - name: Package chart
+        run: helm package .
+      - name: Create a release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: '*.tgz'

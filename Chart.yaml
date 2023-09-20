@@ -1,0 +1,10 @@
+apiVersion: v2
+name: betterstack-logs
+version: 1.0.0
+dependencies:
+  - name: metrics-server
+    version: '>=0'
+    repository: https://kubernetes-sigs.github.io/metrics-server/
+  - name: vector
+    version: '>=0'
+    repository: https://helm.vector.dev
