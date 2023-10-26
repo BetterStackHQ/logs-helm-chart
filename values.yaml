@@ -1,3 +1,6 @@
+metrics-server:
+  enabled: true
+
 vector:
   role: Agent
   service:
