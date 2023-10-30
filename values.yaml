@@ -80,7 +80,7 @@ vector:
               {}
 
           if .apache2 != {} {
-            .platform = "Apache2"
+            .platform = "Apache"
 
             .dt = format_timestamp!(parse_timestamp(del(.apache2.timestamp), "%d/%b/%Y:%T %z") ?? .dt, "%+")
             .level = del(.apache2.severity)
@@ -130,7 +130,7 @@ vector:
 
           # we can't distinguish apache and nginx logs (they have the same format)
           # so we merge them under the generalized "HTTP" platform
-          if .platform == "Apache2" || .platform == "Nginx" {
+          if .platform == "Apache" || .platform == "Nginx" {
             apache2 = del(.apache2)
             if is_null(apache2) { apache2 = {} }
 
@@ -163,14 +163,14 @@ vector:
             # extract message metadata
             tmp = string!(.message)
             .message_metadata = {}
-            
+
             ips = parse_regex_all!(tmp, r'\b(?P<ip>(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?))\b')
             if exists(ips[0].ip) { .message_metadata.ipv4_1 = ips[0].ip; tmp = replace(tmp, string!(ips[0].ip), "") }
             if exists(ips[1].ip) { .message_metadata.ipv4_2 = ips[1].ip; tmp = replace(tmp, string!(ips[1].ip), "") }
             if exists(ips[2].ip) { .message_metadata.ipv4_3 = ips[2].ip; tmp = replace(tmp, string!(ips[2].ip), "") }
             if exists(ips[3].ip) { .message_metadata.ipv4_4 = ips[3].ip; tmp = replace(tmp, string!(ips[3].ip), "") }
             if exists(ips[4].ip) { .message_metadata.ipv4_5 = ips[4].ip; tmp = replace(tmp, string!(ips[4].ip), "") }
-            
+
             # we match only full IPv6 addresses
             ipv6s = parse_regex_all!(tmp, r'\b(?P<ip>(?:[a-fA-F0-9]{1,4}:){7}[a-fA-F0-9]{1,4})\b')
             if exists(ipv6s[0].ip) { .message_metadata.ipv6_1 = ipv6s[0].ip; tmp = replace(tmp, string!(ipv6s[0].ip), "") }
@@ -178,7 +178,7 @@ vector:
             if exists(ipv6s[2].ip) { .message_metadata.ipv6_3 = ipv6s[2].ip; tmp = replace(tmp, string!(ipv6s[2].ip), "") }
             if exists(ipv6s[3].ip) { .message_metadata.ipv6_4 = ipv6s[3].ip; tmp = replace(tmp, string!(ipv6s[3].ip), "") }
             if exists(ipv6s[4].ip) { .message_metadata.ipv6_5 = ipv6s[4].ip; tmp = replace(tmp, string!(ipv6s[4].ip), "") }
-            
+
             numbers = parse_regex_all!(tmp, r'(?P<num>\b\d+(?:\.\d+)?\b)')
             if exists(numbers[0].num) { .message_metadata.param1 = to_int(numbers[0].num) ?? to_float(numbers[0].num) ?? null }
             if exists(numbers[1].num) { .message_metadata.param2 = to_int(numbers[1].num) ?? to_float(numbers[1].num) ?? null }
@@ -209,14 +209,14 @@ vector:
             # extract message metadata
             tmp = string!(.message)
             .message_metadata = {}
-            
+
             ips = parse_regex_all!(tmp, r'\b(?P<ip>(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?))\b')
             if exists(ips[0].ip) { .message_metadata.ipv4_1 = ips[0].ip; tmp = replace(tmp, string!(ips[0].ip), "") }
             if exists(ips[1].ip) { .message_metadata.ipv4_2 = ips[1].ip; tmp = replace(tmp, string!(ips[1].ip), "") }
             if exists(ips[2].ip) { .message_metadata.ipv4_3 = ips[2].ip; tmp = replace(tmp, string!(ips[2].ip), "") }
             if exists(ips[3].ip) { .message_metadata.ipv4_4 = ips[3].ip; tmp = replace(tmp, string!(ips[3].ip), "") }
             if exists(ips[4].ip) { .message_metadata.ipv4_5 = ips[4].ip; tmp = replace(tmp, string!(ips[4].ip), "") }
-            
+
             # we match only full IPv6 addresses
             ipv6s = parse_regex_all!(tmp, r'\b(?P<ip>(?:[a-fA-F0-9]{1,4}:){7}[a-fA-F0-9]{1,4})\b')
             if exists(ipv6s[0].ip) { .message_metadata.ipv6_1 = ipv6s[0].ip; tmp = replace(tmp, string!(ipv6s[0].ip), "") }
@@ -224,7 +224,7 @@ vector:
             if exists(ipv6s[2].ip) { .message_metadata.ipv6_3 = ipv6s[2].ip; tmp = replace(tmp, string!(ipv6s[2].ip), "") }
             if exists(ipv6s[3].ip) { .message_metadata.ipv6_4 = ipv6s[3].ip; tmp = replace(tmp, string!(ipv6s[3].ip), "") }
             if exists(ipv6s[4].ip) { .message_metadata.ipv6_5 = ipv6s[4].ip; tmp = replace(tmp, string!(ipv6s[4].ip), "") }
-            
+
             numbers = parse_regex_all!(tmp, r'(?P<num>\b\d+(?:\.\d+)?\b)')
             if exists(numbers[0].num) { .message_metadata.param1 = to_int(numbers[0].num) ?? to_float(numbers[0].num) ?? null }
             if exists(numbers[1].num) { .message_metadata.param2 = to_int(numbers[1].num) ?? to_float(numbers[1].num) ?? null }
@@ -273,14 +273,14 @@ vector:
             # extract message metadata
             tmp = string!(.message)
             .message_metadata = {}
-            
+
             ips = parse_regex_all!(tmp, r'\b(?P<ip>(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?))\b')
             if exists(ips[0].ip) { .message_metadata.ipv4_1 = ips[0].ip; tmp = replace(tmp, string!(ips[0].ip), "") }
             if exists(ips[1].ip) { .message_metadata.ipv4_2 = ips[1].ip; tmp = replace(tmp, string!(ips[1].ip), "") }
             if exists(ips[2].ip) { .message_metadata.ipv4_3 = ips[2].ip; tmp = replace(tmp, string!(ips[2].ip), "") }
             if exists(ips[3].ip) { .message_metadata.ipv4_4 = ips[3].ip; tmp = replace(tmp, string!(ips[3].ip), "") }
             if exists(ips[4].ip) { .message_metadata.ipv4_5 = ips[4].ip; tmp = replace(tmp, string!(ips[4].ip), "") }
-            
+
             # we match only full IPv6 addresses
             ipv6s = parse_regex_all!(tmp, r'\b(?P<ip>(?:[a-fA-F0-9]{1,4}:){7}[a-fA-F0-9]{1,4})\b')
             if exists(ipv6s[0].ip) { .message_metadata.ipv6_1 = ipv6s[0].ip; tmp = replace(tmp, string!(ipv6s[0].ip), "") }
@@ -288,7 +288,7 @@ vector:
             if exists(ipv6s[2].ip) { .message_metadata.ipv6_3 = ipv6s[2].ip; tmp = replace(tmp, string!(ipv6s[2].ip), "") }
             if exists(ipv6s[3].ip) { .message_metadata.ipv6_4 = ipv6s[3].ip; tmp = replace(tmp, string!(ipv6s[3].ip), "") }
             if exists(ipv6s[4].ip) { .message_metadata.ipv6_5 = ipv6s[4].ip; tmp = replace(tmp, string!(ipv6s[4].ip), "") }
-            
+
             numbers = parse_regex_all!(tmp, r'(?P<num>\b\d+(?:\.\d+)?\b)')
             if exists(numbers[0].num) { .message_metadata.param1 = to_int(numbers[0].num) ?? to_float(numbers[0].num) ?? null }
             if exists(numbers[1].num) { .message_metadata.param2 = to_int(numbers[1].num) ?? to_float(numbers[1].num) ?? null }
@@ -336,7 +336,7 @@ vector:
             if exists(.redis.dt) {
               .dt = format_timestamp!(parse_timestamp(del(.redis.dt), "%d %b %Y %T%.f") ?? now(), "%+")
             } else if exists(.redis.unix_timestamp) {
-              .dt = format_timestamp!(to_timestamp(del(.redis.unix_timestamp)) ?? now(), "%+")
+              .dt = format_timestamp!(from_unix_timestamp(to_int!(del(.redis.unix_timestamp))) ?? now(), "%+")
             }
 
             .message = del(.redis.message)
@@ -344,14 +344,14 @@ vector:
             # extract message metadata
             tmp = string!(.message)
             .message_metadata = {}
-            
+
             ips = parse_regex_all!(tmp, r'\b(?P<ip>(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?))\b')
             if exists(ips[0].ip) { .message_metadata.ipv4_1 = ips[0].ip; tmp = replace(tmp, string!(ips[0].ip), "") }
             if exists(ips[1].ip) { .message_metadata.ipv4_2 = ips[1].ip; tmp = replace(tmp, string!(ips[1].ip), "") }
             if exists(ips[2].ip) { .message_metadata.ipv4_3 = ips[2].ip; tmp = replace(tmp, string!(ips[2].ip), "") }
             if exists(ips[3].ip) { .message_metadata.ipv4_4 = ips[3].ip; tmp = replace(tmp, string!(ips[3].ip), "") }
             if exists(ips[4].ip) { .message_metadata.ipv4_5 = ips[4].ip; tmp = replace(tmp, string!(ips[4].ip), "") }
-            
+
             # we match only full IPv6 addresses
             ipv6s = parse_regex_all!(tmp, r'\b(?P<ip>(?:[a-fA-F0-9]{1,4}:){7}[a-fA-F0-9]{1,4})\b')
             if exists(ipv6s[0].ip) { .message_metadata.ipv6_1 = ipv6s[0].ip; tmp = replace(tmp, string!(ipv6s[0].ip), "") }
@@ -359,7 +359,7 @@ vector:
             if exists(ipv6s[2].ip) { .message_metadata.ipv6_3 = ipv6s[2].ip; tmp = replace(tmp, string!(ipv6s[2].ip), "") }
             if exists(ipv6s[3].ip) { .message_metadata.ipv6_4 = ipv6s[3].ip; tmp = replace(tmp, string!(ipv6s[3].ip), "") }
             if exists(ipv6s[4].ip) { .message_metadata.ipv6_5 = ipv6s[4].ip; tmp = replace(tmp, string!(ipv6s[4].ip), "") }
-            
+
             numbers = parse_regex_all!(tmp, r'(?P<num>\b\d+(?:\.\d+)?\b)')
             if exists(numbers[0].num) { .message_metadata.param1 = to_int(numbers[0].num) ?? to_float(numbers[0].num) ?? null }
             if exists(numbers[1].num) { .message_metadata.param2 = to_int(numbers[1].num) ?? to_float(numbers[1].num) ?? null }
@@ -423,7 +423,7 @@ vector:
             tags.pod_name = del(item.metadata.name)
             tags.pod_namespace = del(item.metadata.namespace)
             tags.metrics_kind = .kind
-
+          
             for_each(append([], item.containers) ?? []) -> |_index, container| {
               tags.container_name = del(container.name)
               metrics = push(metrics, {
@@ -436,7 +436,7 @@ vector:
                 "dt": .timestamp,
                 "interval_ms": parse_duration(item.window, "ms") ?? null
               })
-
+          
               metrics = push(metrics, {
                 "name": "memory_bytes",
                 "kind": "absolute",
