@@ -1,0 +1,452 @@
+metrics-server:
+  enabled: false
+
+vector:
+  role: Agent
+  service:
+    enabled: false
+  env:
+    - name: SERVICE_ACCOUNT_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: vector-service-account
+          key: token
+  customConfig:
+    # Prevent data dir read-only volume mount issue: https://github.com/vectordotdev/helm-charts/issues/226
+    data_dir: /vector-data-dir
+    sources:
+      better_stack_kubernetes_logs:
+        type: kubernetes_logs
+      better_stack_kubernetes_metrics_nodes:
+        type: http_client
+        endpoint: 'https://{{ .Release.Name }}-metrics-server/apis/metrics.k8s.io/v1beta1/nodes'
+        auth:
+          strategy: bearer
+          token: $SERVICE_ACCOUNT_TOKEN
+        decoding:
+          codec: json
+        headers:
+          accept:
+            - application/json
+      better_stack_kubernetes_metrics_pods:
+        type: http_client
+        endpoint: 'https://{{ .Release.Name }}-metrics-server/apis/metrics.k8s.io/v1beta1/pods'
+        auth:
+          strategy: bearer
+          token: $SERVICE_ACCOUNT_TOKEN
+        decoding:
+          codec: json
+        headers:
+          accept:
+            - application/json
+    sinks:
+      better_stack_http_sink:
+        type: http
+        method: post
+        uri: https://in.logs.betterstack.com/
+        encoding:
+          codec: json
+        auth:
+          strategy: bearer
+          token: ~
+        inputs:
+          - better_stack_kubernetes_parser
+      better_stack_http_metrics_sink:
+        type: http
+        method: post
+        uri: https://in.logs.betterstack.com/metrics
+        encoding:
+          codec: json
+        auth:
+          strategy: bearer
+          token: ~
+        inputs:
+          - better_stack_kubernetes_metrics_nodes_parser
+          - better_stack_kubernetes_metrics_pods_parser
+    transforms:
+      better_stack_kubernetes_parser:
+        type: remap
+        inputs:
+          - better_stack_kubernetes_logs
+        source: |
+          del(.source_type)
+          .dt = del(.timestamp)
+          .kubernetes.stream =  del(.stream)
+          .platform = "Kubernetes"
+
+          .apache2 = parse_apache_log(.message, format: "combined") ??
+              parse_apache_log(.message, format: "common") ??
+              parse_apache_log(.message, format: "error") ??
+              {}
+
+          if .apache2 != {} {
+            .platform = "Apache"
+
+            .dt = format_timestamp!(parse_timestamp(del(.apache2.timestamp), "%d/%b/%Y:%T %z") ?? .dt, "%+")
+            .level = del(.apache2.severity)
+            .message = del(.apache2.message)
+
+            request_msg = (string(.apache2.method) ?? "") + " " + (string(.apache2.path) ?? "") + " " + (string(.apache2.protocol) ?? "")
+            if .message == request_msg { del(.message) }
+          } else {
+            del(.apache2)
+          }
+
+          .nginx = parse_regex(.message, r'^\s*(-|(?P<client>\S+))\s+\-\s+(-|(?P<user>\S+))\s+\[(?P<timestamp>.+)\]\s+"(?P<request>(?P<method>\w+)\s+(?P<path>\S+)\s+(?P<protocol>\S+))"\s+(?P<status>\d+)\s+(?P<size>\d+)\s+"(-|(?P<referrer>.+))"\s+"(-|(?P<agent>.+))"\s*') ??
+              parse_regex(.message, r'^\s*(?P<timestamp>.+)\s+\[(?P<severity>\w+)\]\s+(?P<pid>\d+)\#(?P<tid>\d+):\s+\*(?P<cid>\d+)\s+(?P<message>.*)(?:,\s+client:\s+(?P<client>[^,z]+))(?:,\s+server:\s+(?P<server>[^,z]+))(?:,\s+request:\s+"(?P<request>[^"]+)")(?:,\s+subrequest:\s+"(?P<subrequest>[^"]+)")?(?:,\s+upstream:\s+"(?P<upstream>[^"]+)")?(?:,\s+host:\s+"(?P<host>[^"]+)")(?:,\s+referrer:\s+"(?P<referrer>[^"]+)")?\s*') ??
+              parse_nginx_log(.message, format: "combined") ??
+              parse_nginx_log(.message, format: "error") ??
+              {}
+
+          if .nginx != {} {
+            .platform = "Nginx"
+            .level = del(.nginx.severity)
+            .message = del(.nginx.message)
+
+            if is_null(.message) { del(.message) }
+            if exists(.nginx.timestamp) {
+              .dt = format_timestamp!(
+                parse_timestamp(.nginx.timestamp, "%d/%b/%Y:%T %z") ??
+                  parse_timestamp(.nginx.timestamp, "%Y/%m/%d %T") ??
+                  .dt,
+                "%+"
+              )
+
+              del(.nginx.timestamp)
+            }
+
+            if is_string(.nginx.status) { .nginx.status = to_int(.nginx.status) ?? .nginx.status }
+            if is_string(.nginx.size) { .nginx.size = to_int(.nginx.size) ?? .nginx.size }
+            if is_string(.nginx.cid) { .nginx.cid = to_int(.nginx.cid) ?? .nginx.cid }
+            if is_string(.nginx.pid) { .nginx.pid = to_int(.nginx.pid) ?? .nginx.pid }
+            if is_string(.nginx.tid) { .nginx.tid = to_int(.nginx.tid) ?? .nginx.tid }
+
+            if is_null(.nginx.subrequest) { del(.nginx.subrequest) }
+            if is_null(.nginx.upstream) { del(.nginx.upstream) }
+            if is_null(.nginx.referrer) { del(.nginx.referrer) }
+          } else {
+            del(.nginx)
+          }
+
+          # we can't distinguish apache and nginx logs (they have the same format)
+          # so we merge them under the generalized "HTTP" platform
+          if .platform == "Apache" || .platform == "Nginx" {
+            apache2 = del(.apache2)
+            if is_null(apache2) { apache2 = {} }
+
+            nginx = del(.nginx)
+            if is_null(nginx) { nginx = {} }
+
+            .platform = "HTTP"
+            .http = merge!(apache2, nginx)
+          }
+
+
+          .postgres = parse_regex(.message, r'^(?P<dt>\d+-\d+-\d+ \d+:\d+:\d+\.\d+ \S+) \[(?P<pid>\d+)\] (?:(?:(?P<username>\S+)@(?P<database>\S+))?\s*(?P<level>\w+):\s*(?P<message>.*))?') ?? {}
+
+          if .postgres != {} {
+            .platform = "PostgreSQL"
+            if exists(.postgres.pid) { .postgres.pid = to_int!(.postgres.pid) }
+            if exists(.postgres.level) { .level = downcase!(del(.postgres.level)) }
+            if exists(.postgres.message) { .message = del(.postgres.message) }
+
+            if exists(.postgres.dt) {
+              parsed_dt = to_string(.postgres.dt)
+
+              if !ends_with(parsed_dt, " UTC") {
+                .postgres.local_date_time = del(.postgres.dt)
+              } else {
+                .dt = del(.postgres.dt)
+              }
+            }
+
+            # extract message metadata
+            tmp = string!(.message)
+            .message_metadata = {}
+
+            ips = parse_regex_all!(tmp, r'\b(?P<ip>(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?))\b')
+            if exists(ips[0].ip) { .message_metadata.ipv4_1 = ips[0].ip; tmp = replace(tmp, string!(ips[0].ip), "") }
+            if exists(ips[1].ip) { .message_metadata.ipv4_2 = ips[1].ip; tmp = replace(tmp, string!(ips[1].ip), "") }
+            if exists(ips[2].ip) { .message_metadata.ipv4_3 = ips[2].ip; tmp = replace(tmp, string!(ips[2].ip), "") }
+            if exists(ips[3].ip) { .message_metadata.ipv4_4 = ips[3].ip; tmp = replace(tmp, string!(ips[3].ip), "") }
+            if exists(ips[4].ip) { .message_metadata.ipv4_5 = ips[4].ip; tmp = replace(tmp, string!(ips[4].ip), "") }
+
+            # we match only full IPv6 addresses
+            ipv6s = parse_regex_all!(tmp, r'\b(?P<ip>(?:[a-fA-F0-9]{1,4}:){7}[a-fA-F0-9]{1,4})\b')
+            if exists(ipv6s[0].ip) { .message_metadata.ipv6_1 = ipv6s[0].ip; tmp = replace(tmp, string!(ipv6s[0].ip), "") }
+            if exists(ipv6s[1].ip) { .message_metadata.ipv6_2 = ipv6s[1].ip; tmp = replace(tmp, string!(ipv6s[1].ip), "") }
+            if exists(ipv6s[2].ip) { .message_metadata.ipv6_3 = ipv6s[2].ip; tmp = replace(tmp, string!(ipv6s[2].ip), "") }
+            if exists(ipv6s[3].ip) { .message_metadata.ipv6_4 = ipv6s[3].ip; tmp = replace(tmp, string!(ipv6s[3].ip), "") }
+            if exists(ipv6s[4].ip) { .message_metadata.ipv6_5 = ipv6s[4].ip; tmp = replace(tmp, string!(ipv6s[4].ip), "") }
+
+            numbers = parse_regex_all!(tmp, r'(?P<num>\b\d+(?:\.\d+)?\b)')
+            if exists(numbers[0].num) { .message_metadata.param1 = to_int(numbers[0].num) ?? to_float(numbers[0].num) ?? null }
+            if exists(numbers[1].num) { .message_metadata.param2 = to_int(numbers[1].num) ?? to_float(numbers[1].num) ?? null }
+            if exists(numbers[2].num) { .message_metadata.param3 = to_int(numbers[2].num) ?? to_float(numbers[2].num) ?? null }
+            if exists(numbers[3].num) { .message_metadata.param4 = to_int(numbers[3].num) ?? to_float(numbers[3].num) ?? null }
+            if exists(numbers[4].num) { .message_metadata.param5 = to_int(numbers[4].num) ?? to_float(numbers[4].num) ?? null }
+            if exists(numbers[5].num) { .message_metadata.param6 = to_int(numbers[5].num) ?? to_float(numbers[5].num) ?? null }
+            if exists(numbers[6].num) { .message_metadata.param7 = to_int(numbers[6].num) ?? to_float(numbers[6].num) ?? null }
+            if exists(numbers[7].num) { .message_metadata.param8 = to_int(numbers[7].num) ?? to_float(numbers[7].num) ?? null }
+            if exists(numbers[8].num) { .message_metadata.param9 = to_int(numbers[8].num) ?? to_float(numbers[8].num) ?? null }
+            if exists(numbers[9].num) { .message_metadata.param10 = to_int(numbers[9].num) ?? to_float(numbers[9].num) ?? null }
+
+          } else {
+            del(.postgres)
+          }
+
+          .mysql = parse_regex(.message, r'^(?P<dt>\d+-\d+-\d+T\d+:\d+:\d+\.\d+\w+)\s+(?P<thread>\d+)\s+\[(?P<priority>\S+)\]\s*\[(?P<error_code>\S+)\]\s*\[(?P<subsystem>\S+)\]\s*(?P<message>.*)') ??
+              parse_regex(.message, r'^(?P<dt>\d+-\d+-\d+T\d+:\d+:\d+\.\d+\w+)\s*(?P<id>\d+)\s*(?P<command>[^\t]+)\s*(?P<message>.*)?') ??
+              {}
+
+          if .mysql != {} {
+            .platform = "MySQL"
+            if exists(.mysql.dt) { .dt = del(.mysql.dt) }
+            if exists(.mysql.thread) { .mysql.thread = to_int!(.mysql.thread) }
+            if exists(.mysql.id) { .mysql.id = to_int!(.mysql.id) }
+            .message = del(.mysql.message)
+
+            # extract message metadata
+            tmp = string!(.message)
+            .message_metadata = {}
+
+            ips = parse_regex_all!(tmp, r'\b(?P<ip>(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?))\b')
+            if exists(ips[0].ip) { .message_metadata.ipv4_1 = ips[0].ip; tmp = replace(tmp, string!(ips[0].ip), "") }
+            if exists(ips[1].ip) { .message_metadata.ipv4_2 = ips[1].ip; tmp = replace(tmp, string!(ips[1].ip), "") }
+            if exists(ips[2].ip) { .message_metadata.ipv4_3 = ips[2].ip; tmp = replace(tmp, string!(ips[2].ip), "") }
+            if exists(ips[3].ip) { .message_metadata.ipv4_4 = ips[3].ip; tmp = replace(tmp, string!(ips[3].ip), "") }
+            if exists(ips[4].ip) { .message_metadata.ipv4_5 = ips[4].ip; tmp = replace(tmp, string!(ips[4].ip), "") }
+
+            # we match only full IPv6 addresses
+            ipv6s = parse_regex_all!(tmp, r'\b(?P<ip>(?:[a-fA-F0-9]{1,4}:){7}[a-fA-F0-9]{1,4})\b')
+            if exists(ipv6s[0].ip) { .message_metadata.ipv6_1 = ipv6s[0].ip; tmp = replace(tmp, string!(ipv6s[0].ip), "") }
+            if exists(ipv6s[1].ip) { .message_metadata.ipv6_2 = ipv6s[1].ip; tmp = replace(tmp, string!(ipv6s[1].ip), "") }
+            if exists(ipv6s[2].ip) { .message_metadata.ipv6_3 = ipv6s[2].ip; tmp = replace(tmp, string!(ipv6s[2].ip), "") }
+            if exists(ipv6s[3].ip) { .message_metadata.ipv6_4 = ipv6s[3].ip; tmp = replace(tmp, string!(ipv6s[3].ip), "") }
+            if exists(ipv6s[4].ip) { .message_metadata.ipv6_5 = ipv6s[4].ip; tmp = replace(tmp, string!(ipv6s[4].ip), "") }
+
+            numbers = parse_regex_all!(tmp, r'(?P<num>\b\d+(?:\.\d+)?\b)')
+            if exists(numbers[0].num) { .message_metadata.param1 = to_int(numbers[0].num) ?? to_float(numbers[0].num) ?? null }
+            if exists(numbers[1].num) { .message_metadata.param2 = to_int(numbers[1].num) ?? to_float(numbers[1].num) ?? null }
+            if exists(numbers[2].num) { .message_metadata.param3 = to_int(numbers[2].num) ?? to_float(numbers[2].num) ?? null }
+            if exists(numbers[3].num) { .message_metadata.param4 = to_int(numbers[3].num) ?? to_float(numbers[3].num) ?? null }
+            if exists(numbers[4].num) { .message_metadata.param5 = to_int(numbers[4].num) ?? to_float(numbers[4].num) ?? null }
+            if exists(numbers[5].num) { .message_metadata.param6 = to_int(numbers[5].num) ?? to_float(numbers[5].num) ?? null }
+            if exists(numbers[6].num) { .message_metadata.param7 = to_int(numbers[6].num) ?? to_float(numbers[6].num) ?? null }
+            if exists(numbers[7].num) { .message_metadata.param8 = to_int(numbers[7].num) ?? to_float(numbers[7].num) ?? null }
+            if exists(numbers[8].num) { .message_metadata.param9 = to_int(numbers[8].num) ?? to_float(numbers[8].num) ?? null }
+            if exists(numbers[9].num) { .message_metadata.param10 = to_int(numbers[9].num) ?? to_float(numbers[9].num) ?? null }
+
+          } else {
+            del(.mysql)
+          }
+
+          .mongodb = object!(parse_json(.message) ?? {})
+
+          if .mongodb != {} && exists(.mongodb.t."$$date") {
+            .platform = "MongoDB"
+            .dt = .mongodb.t."$$date"
+            .message = del(.mongodb.msg)
+
+            if .mongodb.s == "I" {
+              .level = "info"
+            } else if .mongodb.s == "W" {
+              .level = "warning"
+            } else if .mongodb.s == "E" {
+              .level = "error"
+            } else if .mongodb.s == "F" {
+              .level = "fatal"
+            } else if .mongodb.s == "D" {
+              .level = "debug"
+            } else if .mongodb.s == "D1" {
+              .level = "debug1"
+            } else if .mongodb.s == "D2" {
+              .level = "debug2"
+            } else if .mongodb.s == "D3" {
+              .level = "debug3"
+            } else if .mongodb.s == "D4" {
+              .level = "debug4"
+            } else if .mongodb.s == "D5" {
+              .level = "debug5"
+            }
+
+            # extract message metadata
+            tmp = string!(.message)
+            .message_metadata = {}
+
+            ips = parse_regex_all!(tmp, r'\b(?P<ip>(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?))\b')
+            if exists(ips[0].ip) { .message_metadata.ipv4_1 = ips[0].ip; tmp = replace(tmp, string!(ips[0].ip), "") }
+            if exists(ips[1].ip) { .message_metadata.ipv4_2 = ips[1].ip; tmp = replace(tmp, string!(ips[1].ip), "") }
+            if exists(ips[2].ip) { .message_metadata.ipv4_3 = ips[2].ip; tmp = replace(tmp, string!(ips[2].ip), "") }
+            if exists(ips[3].ip) { .message_metadata.ipv4_4 = ips[3].ip; tmp = replace(tmp, string!(ips[3].ip), "") }
+            if exists(ips[4].ip) { .message_metadata.ipv4_5 = ips[4].ip; tmp = replace(tmp, string!(ips[4].ip), "") }
+
+            # we match only full IPv6 addresses
+            ipv6s = parse_regex_all!(tmp, r'\b(?P<ip>(?:[a-fA-F0-9]{1,4}:){7}[a-fA-F0-9]{1,4})\b')
+            if exists(ipv6s[0].ip) { .message_metadata.ipv6_1 = ipv6s[0].ip; tmp = replace(tmp, string!(ipv6s[0].ip), "") }
+            if exists(ipv6s[1].ip) { .message_metadata.ipv6_2 = ipv6s[1].ip; tmp = replace(tmp, string!(ipv6s[1].ip), "") }
+            if exists(ipv6s[2].ip) { .message_metadata.ipv6_3 = ipv6s[2].ip; tmp = replace(tmp, string!(ipv6s[2].ip), "") }
+            if exists(ipv6s[3].ip) { .message_metadata.ipv6_4 = ipv6s[3].ip; tmp = replace(tmp, string!(ipv6s[3].ip), "") }
+            if exists(ipv6s[4].ip) { .message_metadata.ipv6_5 = ipv6s[4].ip; tmp = replace(tmp, string!(ipv6s[4].ip), "") }
+
+            numbers = parse_regex_all!(tmp, r'(?P<num>\b\d+(?:\.\d+)?\b)')
+            if exists(numbers[0].num) { .message_metadata.param1 = to_int(numbers[0].num) ?? to_float(numbers[0].num) ?? null }
+            if exists(numbers[1].num) { .message_metadata.param2 = to_int(numbers[1].num) ?? to_float(numbers[1].num) ?? null }
+            if exists(numbers[2].num) { .message_metadata.param3 = to_int(numbers[2].num) ?? to_float(numbers[2].num) ?? null }
+            if exists(numbers[3].num) { .message_metadata.param4 = to_int(numbers[3].num) ?? to_float(numbers[3].num) ?? null }
+            if exists(numbers[4].num) { .message_metadata.param5 = to_int(numbers[4].num) ?? to_float(numbers[4].num) ?? null }
+            if exists(numbers[5].num) { .message_metadata.param6 = to_int(numbers[5].num) ?? to_float(numbers[5].num) ?? null }
+            if exists(numbers[6].num) { .message_metadata.param7 = to_int(numbers[6].num) ?? to_float(numbers[6].num) ?? null }
+            if exists(numbers[7].num) { .message_metadata.param8 = to_int(numbers[7].num) ?? to_float(numbers[7].num) ?? null }
+            if exists(numbers[8].num) { .message_metadata.param9 = to_int(numbers[8].num) ?? to_float(numbers[8].num) ?? null }
+            if exists(numbers[9].num) { .message_metadata.param10 = to_int(numbers[9].num) ?? to_float(numbers[9].num) ?? null }
+
+          } else {
+            del(.mongodb)
+          }
+
+          .redis = parse_regex(.message, r'^(?P<pid>\d+):(?P<role_char>\w)\s+(?P<dt>\d+ \w+ \d+ \d{2}:\d{2}:\d{2}.\d+) (?P<level_symbol>.) (?P<message>.*)') ??
+              parse_regex(.message, r'^(?P<pid>\d+):(?P<role>\S+) \((?P<unix_timestamp>\d+)\) (?P<message>.*)') ??
+              {}
+
+          if .redis != {} {
+            .platform = "Redis"
+            if .redis.role_char == "M" {
+              .redis.role = "master"
+            } else if .redis.role_char == "S" {
+              .redis.role = "slave"
+            } else if .redis.role_char == "C" {
+              .redis.role = "RDB/AOF writing child"
+            } else if .redis.role_char == "X" {
+              .redis.role = "sentinel"
+            }
+
+            if .redis.level_symbol == "." {
+              .level = "debug"
+            } else if .redis.level_symbol == "-" {
+              .level = "verbose"
+            } else if .redis.level_symbol == "*" {
+              .level = "notice"
+            } else if .redis.level_symbol == "#" {
+              .level = "warning"
+            }
+
+            .redis.pid = to_int(.redis.pid) ?? null
+
+            if exists(.redis.dt) {
+              .dt = format_timestamp!(parse_timestamp(del(.redis.dt), "%d %b %Y %T%.f") ?? now(), "%+")
+            } else if exists(.redis.unix_timestamp) {
+              .dt = format_timestamp!(from_unix_timestamp(to_int!(del(.redis.unix_timestamp))) ?? now(), "%+")
+            }
+
+            .message = del(.redis.message)
+
+            # extract message metadata
+            tmp = string!(.message)
+            .message_metadata = {}
+
+            ips = parse_regex_all!(tmp, r'\b(?P<ip>(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?))\b')
+            if exists(ips[0].ip) { .message_metadata.ipv4_1 = ips[0].ip; tmp = replace(tmp, string!(ips[0].ip), "") }
+            if exists(ips[1].ip) { .message_metadata.ipv4_2 = ips[1].ip; tmp = replace(tmp, string!(ips[1].ip), "") }
+            if exists(ips[2].ip) { .message_metadata.ipv4_3 = ips[2].ip; tmp = replace(tmp, string!(ips[2].ip), "") }
+            if exists(ips[3].ip) { .message_metadata.ipv4_4 = ips[3].ip; tmp = replace(tmp, string!(ips[3].ip), "") }
+            if exists(ips[4].ip) { .message_metadata.ipv4_5 = ips[4].ip; tmp = replace(tmp, string!(ips[4].ip), "") }
+
+            # we match only full IPv6 addresses
+            ipv6s = parse_regex_all!(tmp, r'\b(?P<ip>(?:[a-fA-F0-9]{1,4}:){7}[a-fA-F0-9]{1,4})\b')
+            if exists(ipv6s[0].ip) { .message_metadata.ipv6_1 = ipv6s[0].ip; tmp = replace(tmp, string!(ipv6s[0].ip), "") }
+            if exists(ipv6s[1].ip) { .message_metadata.ipv6_2 = ipv6s[1].ip; tmp = replace(tmp, string!(ipv6s[1].ip), "") }
+            if exists(ipv6s[2].ip) { .message_metadata.ipv6_3 = ipv6s[2].ip; tmp = replace(tmp, string!(ipv6s[2].ip), "") }
+            if exists(ipv6s[3].ip) { .message_metadata.ipv6_4 = ipv6s[3].ip; tmp = replace(tmp, string!(ipv6s[3].ip), "") }
+            if exists(ipv6s[4].ip) { .message_metadata.ipv6_5 = ipv6s[4].ip; tmp = replace(tmp, string!(ipv6s[4].ip), "") }
+
+            numbers = parse_regex_all!(tmp, r'(?P<num>\b\d+(?:\.\d+)?\b)')
+            if exists(numbers[0].num) { .message_metadata.param1 = to_int(numbers[0].num) ?? to_float(numbers[0].num) ?? null }
+            if exists(numbers[1].num) { .message_metadata.param2 = to_int(numbers[1].num) ?? to_float(numbers[1].num) ?? null }
+            if exists(numbers[2].num) { .message_metadata.param3 = to_int(numbers[2].num) ?? to_float(numbers[2].num) ?? null }
+            if exists(numbers[3].num) { .message_metadata.param4 = to_int(numbers[3].num) ?? to_float(numbers[3].num) ?? null }
+            if exists(numbers[4].num) { .message_metadata.param5 = to_int(numbers[4].num) ?? to_float(numbers[4].num) ?? null }
+            if exists(numbers[5].num) { .message_metadata.param6 = to_int(numbers[5].num) ?? to_float(numbers[5].num) ?? null }
+            if exists(numbers[6].num) { .message_metadata.param7 = to_int(numbers[6].num) ?? to_float(numbers[6].num) ?? null }
+            if exists(numbers[7].num) { .message_metadata.param8 = to_int(numbers[7].num) ?? to_float(numbers[7].num) ?? null }
+            if exists(numbers[8].num) { .message_metadata.param9 = to_int(numbers[8].num) ?? to_float(numbers[8].num) ?? null }
+            if exists(numbers[9].num) { .message_metadata.param10 = to_int(numbers[9].num) ?? to_float(numbers[9].num) ?? null }
+
+          } else {
+            del(.redis)
+          }
+      better_stack_kubernetes_metrics_nodes_parser:
+        type: remap
+        inputs:
+          - better_stack_kubernetes_metrics_nodes
+        source: |
+          del(.source_type)
+          .dt = del(.timestamp)
+          metrics = []
+          for_each(append([], .items) ?? []) -> |_index, item| {
+            item.metadata.labels.node_name = item.metadata.name
+            item.metadata.labels.metrics_kind = .kind
+
+            metrics = push(metrics, {
+              "name": "cpu_ratio",
+              "kind": "absolute",
+              "gauge": {
+                "value": to_float(replace(item.usage.cpu, "n", "") ?? null) / 1000000000
+              },
+              "tags": item.metadata.labels,
+              "dt": .timestamp,
+              "interval_ms": parse_duration(item.window, "ms") ?? null
+            })
+
+            metrics = push(metrics, {
+              "name": "memory_bytes",
+              "kind": "absolute",
+              "gauge": {
+                "value": 1024 * to_int(replace(item.usage.memory, "Ki", "") ?? null) ?? null
+              },
+              "tags": item.metadata.labels,
+              "dt": .timestamp,
+              "interval_ms": parse_duration(item.window, "ms") ?? null
+            })
+          }
+          . = metrics
+      better_stack_kubernetes_metrics_pods_parser:
+        type: remap
+        inputs:
+          - better_stack_kubernetes_metrics_pods
+        source: |
+          del(.source_type)
+          .dt = del(.timestamp)
+          metrics = []
+          for_each(append([], .items) ?? []) -> |_index, item| {
+            tags = del(item.metadata.labels)
+            tags.pod_name = del(item.metadata.name)
+            tags.pod_namespace = del(item.metadata.namespace)
+            tags.metrics_kind = .kind
+
+            for_each(append([], item.containers) ?? []) -> |_index, container| {
+              tags.container_name = del(container.name)
+              metrics = push(metrics, {
+                "name": "cpu_ratio",
+                "kind": "absolute",
+                "gauge": {
+                  "value": to_float(replace(container.usage.cpu, "n", "") ?? null) / 1000000000
+                },
+                "tags": tags,
+                "dt": .timestamp,
+                "interval_ms": parse_duration(item.window, "ms") ?? null
+              })
+
+              metrics = push(metrics, {
+                "name": "memory_bytes",
+                "kind": "absolute",
+                "gauge": {
+                  "value": 1024 * to_int(replace(container.usage.memory, "Ki", "") ?? null) ?? null
+                },
+                "tags": tags,
+                "dt": .timestamp,
+                "interval_ms": parse_duration(item.window, "ms") ?? null
+              })
+            }
+          }
+          . = metrics
