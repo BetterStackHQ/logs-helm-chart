@@ -423,7 +423,7 @@ vector:
             tags.pod_name = del(item.metadata.name)
             tags.pod_namespace = del(item.metadata.namespace)
             tags.metrics_kind = .kind
-          
+
             for_each(append([], item.containers) ?? []) -> |_index, container| {
               tags.container_name = del(container.name)
               metrics = push(metrics, {
@@ -436,7 +436,7 @@ vector:
                 "dt": .timestamp,
                 "interval_ms": parse_duration(item.window, "ms") ?? null
               })
-          
+
               metrics = push(metrics, {
                 "name": "memory_bytes",
                 "kind": "absolute",
