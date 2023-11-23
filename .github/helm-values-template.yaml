@@ -1,3 +1,4 @@
+# config for Minikube with disabled TLS
 vector:
   customConfig:
     sinks:
@@ -7,3 +8,16 @@ vector:
       better_stack_http_metrics_sink:
         auth:
           token: $SOURCE_TOKEN
+    sources:
+      better_stack_kubernetes_metrics_nodes:
+        tls:
+          verify_certificate: false
+          verify_hostname: false
+      better_stack_kubernetes_metrics_pods:
+        tls:
+          verify_certificate: false
+          verify_hostname: false
+
+metrics-server:
+  args:
+    - --kubelet-insecure-tls
