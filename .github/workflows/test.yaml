@@ -2,6 +2,11 @@ name: End-to-end test
 
 on:
   push:
+    paths:
+      - .github/**
+  schedule:
+    - cron: '30 */6 * * *'
+  workflow_dispatch:
 
 jobs:
   test-last-release:
