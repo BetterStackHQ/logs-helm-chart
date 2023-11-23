@@ -1,4 +1,4 @@
-name: Release
+name: End-to-end test
 
 on:
   push:
