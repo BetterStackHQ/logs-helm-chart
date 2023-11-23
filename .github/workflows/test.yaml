@@ -5,7 +5,7 @@ on:
     paths:
       - .github/**
   schedule:
-    - cron: '30 */6 * * *'
+    - cron: '30 * * * *'
   workflow_dispatch:
 
 jobs:
