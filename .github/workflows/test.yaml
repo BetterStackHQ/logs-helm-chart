@@ -9,12 +9,20 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v3
+      - name: Install Helm
+        uses: azure/setup-helm@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
       - name: Setup Minikube
         uses: medyagh/setup-minikube@master
-      - name: Try the cluster !
+      - name: Check cluster pods
         run: kubectl get pods -A
-      - name: Copy helm-values-template.yaml with SOURCE_TOKEN
+      - name: 1. Add Helm repository
+        run: helm repo add betterstack-logs https://betterstackhq.github.io/logs-helm-chart && helm repo update
+      - name: 2. Set up Helm chart
         run: sed 's/$SOURCE_TOKEN/${{ secrets.HELM_E2E_TEST_SOURCE_TOKEN }}/g' .github/helm-values-template.yaml > values.yaml
-      - name: DEBUG
-        run: cat values.yaml
+      - name: 3. Deploy the chart
+        run: helm install betterstack-logs betterstack-logs/betterstack-logs -f values.yaml
+      - name: Check cluster pods
+        run: kubectl get pods -A
 
