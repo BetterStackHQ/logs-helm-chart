@@ -13,3 +13,8 @@ jobs:
         uses: medyagh/setup-minikube@master
       - name: Try the cluster !
         run: kubectl get pods -A
+      - name: Copy helm-values-template.yaml with SOURCE_TOKEN
+        run: sed 's/$SOURCE_TOKEN/${{ secrets.HELM_E2E_TEST_SOURCE_TOKEN }}/g' .github/helm-values-template.yaml > values.yaml
+      - name: DEBUG
+        run: cat values.yaml
+

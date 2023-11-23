@@ -1,0 +1,9 @@
+vector:
+  customConfig:
+    sinks:
+      better_stack_http_sink:
+        auth:
+          token: $SOURCE_TOKEN
+      better_stack_http_metrics_sink:
+        auth:
+          token: $SOURCE_TOKEN
