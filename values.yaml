@@ -386,28 +386,61 @@ vector:
           for_each(append([], .items) ?? []) -> |_index, item| {
             item.metadata.labels.node_name = item.metadata.name
             item.metadata.labels.metrics_kind = .kind
-
-            metrics = push(metrics, {
-              "name": "cpu_ratio",
-              "kind": "absolute",
-              "gauge": {
-                "value": to_float(replace(item.usage.cpu, "n", "") ?? null) / 1000000000
-              },
-              "tags": item.metadata.labels,
-              "dt": .timestamp,
-              "interval_ms": parse_duration(item.window, "ms") ?? null
-            })
-
-            metrics = push(metrics, {
-              "name": "memory_bytes",
-              "kind": "absolute",
-              "gauge": {
-                "value": 1024 * to_int(replace(item.usage.memory, "Ki", "") ?? null) ?? null
-              },
-              "tags": item.metadata.labels,
-              "dt": .timestamp,
-              "interval_ms": parse_duration(item.window, "ms") ?? null
-            })
+            
+            cpu = null
+            err = null
+            if ends_with(to_string(item.usage.cpu) ?? "", "n") {
+              cpu = to_float(replace(to_string(item.usage.cpu) ?? "", "n", "")) / 1000000000
+            } else if ends_with(to_string(item.usage.cpu) ?? "", "u") {
+              cpu = to_float(replace(to_string(item.usage.cpu) ?? "", "u", "")) / 1000000
+            } else if ends_with(to_string(item.usage.cpu) ?? "", "m") {
+              cpu = to_float(replace(to_string(item.usage.cpu) ?? "", "m", "")) / 1000
+            } else {
+              cpu = to_float(item.usage.cpu) ?? 0
+            }
+            
+            if err == null {
+              metrics = push(metrics, {
+                "name": "cpu_ratio",
+                "kind": "absolute",
+                "gauge": {
+                  "value": cpu
+                },
+                "tags": item.metadata.labels,
+                "dt": .timestamp,
+                "interval_ms": parse_duration(item.window, "ms") ?? null
+              })
+            }
+            
+            memory = null
+            if ends_with(to_string(item.usage.memory) ?? "", "Ki") {
+              memory, err = to_float(replace(to_string(item.usage.memory) ?? "", "Ki", "")) * 1000
+            } else if ends_with(to_string(item.usage.memory) ?? "", "K") {
+              memory, err = to_float(replace(to_string(item.usage.memory) ?? "", "K", "")) * 1024
+            } else if ends_with(to_string(item.usage.memory) ?? "", "Mi") {
+              memory, err = to_float(replace(to_string(item.usage.memory) ?? "", "Mi", "")) * 1000 * 1000
+            } else if ends_with(to_string(item.usage.memory) ?? "", "M") {
+              memory, err = to_float(replace(to_string(item.usage.memory) ?? "", "M", "")) * 1024 * 1024
+            } else if ends_with(to_string(item.usage.memory) ?? "", "Gi") {
+              memory, err = to_float(replace(to_string(item.usage.memory) ?? "", "Gi", "")) * 1000 * 1000 * 1000
+            } else if ends_with(to_string(item.usage.memory) ?? "", "G") {
+              memory, err = to_float(replace(to_string(item.usage.memory) ?? "", "G", "")) * 1024 * 1024 * 1024
+            } else {
+              memory, err = to_float(item.usage.memory)
+            }
+            
+            if err == null {
+              metrics = push(metrics, {
+                "name": "memory_bytes",
+                "kind": "absolute",
+                "gauge": {
+                  "value": memory
+                },
+                "tags": item.metadata.labels,
+                "dt": .timestamp,
+                "interval_ms": parse_duration(item.window, "ms") ?? null
+              })
+            }
           }
           . = metrics
       better_stack_kubernetes_metrics_pods_parser:
@@ -423,30 +456,62 @@ vector:
             tags.pod_name = del(item.metadata.name)
             tags.pod_namespace = del(item.metadata.namespace)
             tags.metrics_kind = .kind
-
+          
             for_each(append([], item.containers) ?? []) -> |_index, container| {
               tags.container_name = del(container.name)
-              metrics = push(metrics, {
-                "name": "cpu_ratio",
-                "kind": "absolute",
-                "gauge": {
-                  "value": to_float(replace(container.usage.cpu, "n", "") ?? null) / 1000000000
-                },
-                "tags": tags,
-                "dt": .timestamp,
-                "interval_ms": parse_duration(item.window, "ms") ?? null
-              })
-
-              metrics = push(metrics, {
-                "name": "memory_bytes",
-                "kind": "absolute",
-                "gauge": {
-                  "value": 1024 * to_int(replace(container.usage.memory, "Ki", "") ?? null) ?? null
-                },
-                "tags": tags,
-                "dt": .timestamp,
-                "interval_ms": parse_duration(item.window, "ms") ?? null
-              })
+              cpu = null
+              err = null
+              if ends_with(to_string(container.usage.cpu) ?? "", "n") {
+                cpu = to_float(replace(to_string(container.usage.cpu) ?? "", "n", "")) / 1000000000
+              } else if ends_with(to_string(container.usage.cpu) ?? "", "u") {
+                cpu = to_float(replace(to_string(container.usage.cpu) ?? "", "u", "")) / 1000000
+              } else if ends_with(to_string(container.usage.cpu) ?? "", "m") {
+                cpu = to_float(replace(to_string(container.usage.cpu) ?? "", "m", "")) / 1000
+              } else {
+                cpu = to_float(item.usage.cpu) ?? 0
+              }
+              
+              if err == null {
+                metrics = push(metrics, {
+                  "name": "cpu_ratio",
+                  "kind": "absolute",
+                  "gauge": { "value": cpu },
+                  "tags": tags,
+                  "dt": .timestamp,
+                  "interval_ms": parse_duration(item.window, "ms") ?? null
+                })
+              }
+              
+              memory = null
+              err = null
+              if ends_with(to_string(container.usage.memory) ?? "", "Ki") {
+                memory, err = to_float(replace(to_string(container.usage.memory) ?? "", "Ki", "")) * 1000
+              } else if ends_with(to_string(container.usage.memory) ?? "", "K") {
+                memory, err = to_float(replace(to_string(container.usage.memory) ?? "", "K", "")) * 1024
+              } else if ends_with(to_string(container.usage.memory) ?? "", "Mi") {
+                memory, err = to_float(replace(to_string(container.usage.memory) ?? "", "Mi", "")) * 1000 * 1000
+              } else if ends_with(to_string(container.usage.memory) ?? "", "M") {
+                memory, err = to_float(replace(to_string(container.usage.memory) ?? "", "M", "")) * 1024 * 1024
+              } else if ends_with(to_string(container.usage.memory) ?? "", "Gi") {
+                memory, err = to_float(replace(to_string(container.usage.memory) ?? "", "Gi", "")) * 1000 * 1000 * 1000
+              } else if ends_with(to_string(container.usage.memory) ?? "", "G") {
+                memory, err = to_float(replace(to_string(container.usage.memory) ?? "", "G", "")) * 1024 * 1024 * 1024
+              } else {
+                memory, err = to_float(container.usage.memory)
+              }
+            
+              if err == null {
+                metrics = push(metrics, {
+                  "name": "memory_bytes",
+                  "kind": "absolute",
+                  "gauge": {
+                    "value": memory
+                  },
+                  "tags": tags,
+                  "dt": .timestamp,
+                  "interval_ms": parse_duration(item.window, "ms") ?? null
+                })
+              }
             }
           }
           . = metrics
