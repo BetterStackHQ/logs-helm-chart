@@ -41,5 +41,5 @@ jobs:
         run: kubectl get pods -A
 
       - name: Wait for a while with the running pods
-        run: sleep 30
+        run: sleep 60
 
