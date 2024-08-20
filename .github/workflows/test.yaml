@@ -30,6 +30,9 @@ jobs:
       - name: 3. Deploy the chart
         run: helm install betterstack-logs betterstack-logs/betterstack-logs -f values.yaml
 
+      - name: List the used Helm release version
+        run: helm list
+
       - name: Wait for the chart to be ready
         run: kubectl wait --for=condition=available deployment/betterstack-logs-metrics-server --timeout=60s
       - name: Check cluster pods
