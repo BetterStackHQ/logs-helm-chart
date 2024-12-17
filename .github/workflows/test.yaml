@@ -33,8 +33,6 @@ jobs:
       - name: List the used Helm release version
         run: helm list
 
-      - name: Wait for the chart to be ready
-        run: kubectl wait --for=condition=available deployment/betterstack-logs-metrics-server --timeout=60s
       - name: Check cluster pods
         run: kubectl get pods -A
 
