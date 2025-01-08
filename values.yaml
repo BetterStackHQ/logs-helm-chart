@@ -196,7 +196,7 @@ vector:
           }
 
           .mysql = parse_regex(.message, r'^(?P<dt>\d+-\d+-\d+T\d+:\d+:\d+\.\d+\w+)\s+(?P<thread>\d+)\s+\[(?P<priority>\S+)\]\s*\[(?P<error_code>\S+)\]\s*\[(?P<subsystem>\S+)\]\s*(?P<message>.*)') ??
-              parse_regex(.message, r'#{'^(?P<dt>\d+-\d+-\d+T\d+:\d+:\d+\.\d+\w+)\s+(?P<id>\d+)\s+(?P<command>[^\t]+)(?:\s+(?P<message>.*))?'}') ??
+              parse_regex(.message, r'^(?P<dt>\d+-\d+-\d+T\d+:\d+:\d+\.\d+\w+)\s+(?P<id>\d+)\s+(?P<command>[^\t]+)(?:\s+(?P<message>.*))?') ??
               {}
 
           if .mysql != {} {
