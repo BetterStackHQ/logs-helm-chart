@@ -45,4 +45,12 @@ jobs:
 
       - name: Wait for a while with the running pods
         run: sleep 60
+      - name: Check cluster pods
+        run: kubectl get pods -A
+
+      - name: Show logs from Vector pod for debugging
+        run: kubectl logs -l app.kubernetes.io/name=vector
+
+      - name: Check if all pods are running
+        run: kubectl get pods -A -o jsonpath='{range .items[*]}{.status.phase}{"\n"}{end}' | grep -qv "^Running$" && echo "Not all pods are running" && exit 1 || echo "OK"
 
