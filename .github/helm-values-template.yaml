@@ -5,9 +5,11 @@ vector:
       better_stack_http_sink:
         auth:
           token: $SOURCE_TOKEN
+        compression: gzip
       better_stack_http_metrics_sink:
         auth:
           token: $SOURCE_TOKEN
+        compression: gzip
     sources:
       better_stack_kubernetes_metrics_nodes:
         tls:
