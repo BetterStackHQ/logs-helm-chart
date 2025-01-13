@@ -46,6 +46,7 @@ vector:
         uri: https://in.logs.betterstack.com/
         encoding:
           codec: json
+        compression: gzip
         auth:
           strategy: bearer
           token: ~
@@ -57,6 +58,7 @@ vector:
         uri: https://in.logs.betterstack.com/metrics
         encoding:
           codec: json
+        compression: gzip
         auth:
           strategy: bearer
           token: ~
