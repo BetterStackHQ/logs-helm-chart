@@ -1,13 +1,17 @@
-# config for Minikube with disabled TLS
+# config with disabled TLS (e.g. for Minikube)
 vector:
   customConfig:
     sinks:
       better_stack_http_sink:
+        uri: "https://$INGESTING_HOST/"
         auth:
-          token: $SOURCE_TOKEN
+          strategy: "bearer"
+          token: "$SOURCE_TOKEN"
       better_stack_http_metrics_sink:
+        uri: "https://$INGESTING_HOST/metrics"
         auth:
-          token: $SOURCE_TOKEN
+          strategy: "bearer"
+          token: "$SOURCE_TOKEN"
     sources:
       better_stack_kubernetes_metrics_nodes:
         tls:
