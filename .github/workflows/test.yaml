@@ -54,3 +54,19 @@ jobs:
       - name: Check if all pods are running
         run: kubectl get pods -A -o jsonpath='{range .items[*]}{.status.phase}{"\n"}{end}' | grep -qv "^Running$" && echo "Not all pods are running" && exit 1 || echo "OK"
 
+  notify-slack:
+    if: ${{ failure() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.event_name == 'schedule') }}
+    needs: [test-last-release]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify Slack
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          curl -X POST "$SLACK_WEBHOOK_URL" \
+            -H 'Content-Type: application/json' \
+            -d "{
+              \"username\": \"E2E tests in Kubernetes Helm Chart\",
+              \"icon_emoji\": \":warning:\",
+              \"text\": \":red_circle: *${{ github.workflow }}* failed on \`${{ github.ref_name }}\`\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View failing run>\"
+            }"
