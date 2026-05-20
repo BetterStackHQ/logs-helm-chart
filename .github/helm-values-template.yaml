@@ -7,6 +7,10 @@ vector:
         auth:
           strategy: "bearer"
           token: "$SOURCE_TOKEN"
+
+vector-aggregator:
+  customConfig:
+    sinks:
       better_stack_http_metrics_sink:
         uri: "https://$INGESTING_HOST/metrics"
         auth:
