@@ -3,13 +3,13 @@ name: betterstack-logs
 version: 1.2.0
 dependencies:
   - name: metrics-server
-    version: '>=0'
+    version: 3.12.2
     repository: https://kubernetes-sigs.github.io/metrics-server/
     condition: metrics-server.enabled
   - name: vector
-    version: '>=0'
+    version: 0.39.0
     repository: https://helm.vector.dev
   - name: vector
     alias: vector-aggregator
-    version: '>=0'
+    version: 0.39.0
     repository: https://helm.vector.dev
