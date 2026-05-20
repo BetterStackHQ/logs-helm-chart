@@ -1,9 +1,12 @@
 dependencies:
 - name: metrics-server
   repository: https://kubernetes-sigs.github.io/metrics-server/
-  version: 3.12.2
+  version: 3.13.0
 - name: vector
   repository: https://helm.vector.dev
-  version: 0.39.0
-digest: sha256:9421823620351d6b48b3a4f185b134592a58b12c1d9412c784c0f6ea52724b02
-generated: "2025-01-13T17:51:50.02772+01:00"
+  version: 0.52.0
+- name: vector
+  repository: https://helm.vector.dev
+  version: 0.52.0
+digest: sha256:a879720ce0d0ef20088cdde7c2a7aeca71d32231013a841b0013dba4ef972f27
+generated: "2026-05-20T10:00:28.752361+02:00"

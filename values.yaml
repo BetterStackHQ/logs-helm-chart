@@ -5,40 +5,12 @@ vector:
   role: Agent
   service:
     enabled: false
-  env:
-    - name: SERVICE_ACCOUNT_TOKEN
-      valueFrom:
-        secretKeyRef:
-          name: vector-service-account
-          key: token
   customConfig:
     # Prevent data dir read-only volume mount issue: https://github.com/vectordotdev/helm-charts/issues/226
     data_dir: /vector-data-dir
     sources:
       better_stack_kubernetes_logs:
         type: kubernetes_logs
-      better_stack_kubernetes_metrics_nodes:
-        type: http_client
-        endpoint: 'https://{{ .Release.Name }}-metrics-server/apis/metrics.k8s.io/v1beta1/nodes'
-        auth:
-          strategy: bearer
-          token: $SERVICE_ACCOUNT_TOKEN
-        decoding:
-          codec: json
-        headers:
-          accept:
-            - application/json
-      better_stack_kubernetes_metrics_pods:
-        type: http_client
-        endpoint: 'https://{{ .Release.Name }}-metrics-server/apis/metrics.k8s.io/v1beta1/pods'
-        auth:
-          strategy: bearer
-          token: $SERVICE_ACCOUNT_TOKEN
-        decoding:
-          codec: json
-        headers:
-          accept:
-            - application/json
     sinks:
       better_stack_http_sink:
         type: http
@@ -52,19 +24,6 @@ vector:
           token: ~
         inputs:
           - better_stack_kubernetes_parser
-      better_stack_http_metrics_sink:
-        type: http
-        method: post
-        uri: https://in.logs.betterstack.com/metrics
-        encoding:
-          codec: json
-        compression: gzip
-        auth:
-          strategy: bearer
-          token: ~
-        inputs:
-          - better_stack_kubernetes_metrics_nodes_parser
-          - better_stack_kubernetes_metrics_pods_parser
     transforms:
       better_stack_kubernetes_parser:
         type: remap
@@ -377,6 +336,59 @@ vector:
           } else {
             del(.redis)
           }
+
+vector-aggregator:
+  role: Stateless-Aggregator
+  replicas: 1
+  service:
+    enabled: false
+  env:
+    - name: SERVICE_ACCOUNT_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: vector-service-account
+          key: token
+  customConfig:
+    # Prevent data dir read-only volume mount issue: https://github.com/vectordotdev/helm-charts/issues/226
+    data_dir: /vector-data-dir
+    sources:
+      better_stack_kubernetes_metrics_nodes:
+        type: http_client
+        endpoint: 'https://{{ .Release.Name }}-metrics-server/apis/metrics.k8s.io/v1beta1/nodes'
+        auth:
+          strategy: bearer
+          token: $SERVICE_ACCOUNT_TOKEN
+        decoding:
+          codec: json
+        headers:
+          accept:
+            - application/json
+      better_stack_kubernetes_metrics_pods:
+        type: http_client
+        endpoint: 'https://{{ .Release.Name }}-metrics-server/apis/metrics.k8s.io/v1beta1/pods'
+        auth:
+          strategy: bearer
+          token: $SERVICE_ACCOUNT_TOKEN
+        decoding:
+          codec: json
+        headers:
+          accept:
+            - application/json
+    sinks:
+      better_stack_http_metrics_sink:
+        type: http
+        method: post
+        uri: https://in.logs.betterstack.com/metrics
+        encoding:
+          codec: json
+        compression: gzip
+        auth:
+          strategy: bearer
+          token: ~
+        inputs:
+          - better_stack_kubernetes_metrics_nodes_parser
+          - better_stack_kubernetes_metrics_pods_parser
+    transforms:
       better_stack_kubernetes_metrics_nodes_parser:
         type: remap
         inputs:
