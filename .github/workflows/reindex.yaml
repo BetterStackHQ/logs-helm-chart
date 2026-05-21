@@ -27,9 +27,9 @@ jobs:
                "https://api.github.com/repos/${{ github.repository }}/releases" | \
             yq -P '{ "apiVersion": "v1", "entries": { "betterstack-logs": . | map({ "name": "betterstack-logs", "urls": [ .assets[0].browser_download_url ], "version": .tag_name }) } }' >index.yaml
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v2
+        uses: actions/upload-pages-artifact@v3
         with:
           path: '.'
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v2
+        uses: actions/deploy-pages@v4
