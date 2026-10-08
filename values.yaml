@@ -156,8 +156,8 @@ vector:
             del(.postgres)
           }
 
-          .mysql = parse_regex(.message, r'^(?P<dt>\d+-\d+-\d+T\d+:\d+:\d+\.\d+\w+)\s+(?P<thread>\d+)\s+\[(?P<priority>System|Note|Warning|ERROR)\](?:\s*\[(?P<error_code>MY-\d+)\]\s*\[(?P<subsystem>\S+)\])?\s*(?P<message>.*)') ??
-              parse_regex(.message, r'^(?P<dt>\d+-\d+-\d+T\d+:\d+:\d+\.\d+\w+)\t\s*(?P<id>\d+) (?P<command>[^\t]+)(?:\t\s*(?P<message>\S.*))?') ??
+          .mysql = parse_regex(.message, r'^(?P<dt>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}(?:Z|[+-]\d{2}:\d{2}))\s+(?P<thread>\d+)\s+\[(?P<priority>System|Note|Warning|ERROR)\](?:\s*\[(?P<error_code>MY-\d+)\]\s*\[(?P<subsystem>\S+)\])?\s*(?P<message>.*)') ??
+              parse_regex(.message, r'^(?P<dt>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}(?:Z|[+-]\d{2}:\d{2}))\t\s*(?P<id>\d+) (?P<command>[^\t]+)(?:\t\s*(?P<message>\S.*))?') ??
               {}
 
           if .mysql != {} {
