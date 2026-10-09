@@ -156,16 +156,21 @@ vector:
             del(.postgres)
           }
 
-          .mysql = parse_regex(.message, r'^(?P<dt>\d+-\d+-\d+T\d+:\d+:\d+\.\d+\w+)\s+(?P<thread>\d+)\s+\[(?P<priority>\S+)\]\s*\[(?P<error_code>\S+)\]\s*\[(?P<subsystem>\S+)\]\s*(?P<message>.*)') ??
-              parse_regex(.message, r'^(?P<dt>\d+-\d+-\d+T\d+:\d+:\d+\.\d+\w+)\s+(?P<id>\d+)\s+(?P<command>[^\t]+)(?:\s+(?P<message>.*))?') ??
+          .mysql = parse_regex(.message, r'^(?P<dt>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}(?:Z|[+-]\d{2}:\d{2}))\s+(?P<thread>\d+)\s+\[(?P<priority>System|Note|Warning|ERROR)\](?:\s*\[(?P<error_code>MY-\d+)\]\s*\[(?P<subsystem>\S+)\])?\s*(?P<message>.*)') ??
+              parse_regex(.message, r'^(?P<dt>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}(?:Z|[+-]\d{2}:\d{2}))\t\s*(?P<id>\d+) (?P<command>[^\t]+)(?:\t\s*(?P<message>\S.*))?') ??
               {}
 
           if .mysql != {} {
+            # non-participating optional regex groups parse to null
+            if is_null(.mysql.message) { del(.mysql.message) }
+            if is_null(.mysql.error_code) { del(.mysql.error_code) }
+            if is_null(.mysql.subsystem) { del(.mysql.subsystem) }
+
             .platform = "MySQL"
             if exists(.mysql.dt) { .dt = del(.mysql.dt) }
             if exists(.mysql.thread) { .mysql.thread = to_int!(.mysql.thread) }
             if exists(.mysql.id) { .mysql.id = to_int!(.mysql.id) }
-            .message = del(.mysql.message)
+            if exists(.mysql.message) { .message = del(.mysql.message) }
 
             # extract message metadata
             tmp = string!(.message)
