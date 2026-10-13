@@ -48,8 +48,10 @@ jobs:
       - name: Check cluster pods
         run: kubectl get pods -A
 
-      - name: Show logs from Vector pod for debugging
-        run: kubectl logs -l app.kubernetes.io/name=vector
+      - name: Show logs from Vector pods
+        run: kubectl logs -l 'app.kubernetes.io/name in (vector, vector-aggregator)' --prefix --tail=-1 > vector.log && cat vector.log
+      - name: Check that Vector logged no errors or warnings
+        run: grep -E '^\[[^]]+\] \S+ +(WARN|ERROR) ' vector.log && echo "Vector logged errors or warnings" && exit 1 || echo "OK"
 
       - name: Check if all pods are running
         run: kubectl get pods -A -o jsonpath='{range .items[*]}{.status.phase}{"\n"}{end}' | grep -qv "^Running$" && echo "Not all pods are running" && exit 1 || echo "OK"
