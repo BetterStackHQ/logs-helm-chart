@@ -44,12 +44,17 @@ jobs:
         run: kubectl get pods -A
 
       - name: Wait for a while with the running pods
-        run: sleep 60
+        run: echo "OBSERVED_SINCE=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV" && sleep 60
       - name: Check cluster pods
         run: kubectl get pods -A
 
-      - name: Show logs from Vector pod for debugging
-        run: kubectl logs -l app.kubernetes.io/name=vector
+      - name: Show logs from Vector pods
+        run: kubectl logs -l 'app.kubernetes.io/name in (vector, vector-aggregator)' --prefix --tail=-1 > vector.log && cat vector.log
+      - name: Check that Vector logged no errors or warnings while the pods were running
+        run: |
+          kubectl logs -l 'app.kubernetes.io/name in (vector, vector-aggregator)' --prefix --tail=-1 --since-time="$OBSERVED_SINCE" > vector-observed.log
+          # Requests to the ingesting endpoint that Vector retries are transient network errors, not chart defects
+          grep -vE 'sink\{.*(vector::internal_events::http_client: HTTP error|vector::sinks::util::retries: Retrying after error)' vector-observed.log | grep -E '^\[[^]]+\] \S+ +(WARN|ERROR) ' && echo "Vector logged errors or warnings" && exit 1 || echo "OK"
 
       - name: Check if all pods are running
         run: kubectl get pods -A -o jsonpath='{range .items[*]}{.status.phase}{"\n"}{end}' | grep -qv "^Running$" && echo "Not all pods are running" && exit 1 || echo "OK"
