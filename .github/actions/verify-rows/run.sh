@@ -103,6 +103,8 @@ while :; do
 done
 
 jq -rs '.[] | "\(if .ok then "✅" else "❌" end) \(.text)"' "$OUT"/check-*.json
+# The job summary shows a stored row per check. A failed check's row goes to the log too, which is what the API serves.
+jq -rs '.[] | select((.ok | not) and .sample != null) | "newest row picked for \"\(.name)\": \(.sample | tojson)"' "$OUT"/check-*.json
 PROBLEMS=$(jq -rs 'map(select(.ok | not) | .text) | join("; ")' "$OUT"/check-*.json)
 [ -z "$PROBLEMS" ] || fail "the stored rows are not what the test sent: $PROBLEMS"
 echo "every check found its row"
