@@ -28,13 +28,10 @@ echo "::add-mask::$TOKEN"
 echo "created source $ID \`$INPUT_NAME\` in data region $DATA_REGION"
 
 PROBE=$(jq -nc --arg message "e2e warm-up $INPUT_NAME" '{message: $message}')
-# The ingesting host of a Datadog source (s<id>.<cluster>-datadog...) serves only the Datadog API. The probe lines go
-# to the cluster's plain HTTP host, which is the same name without "-datadog" and accepts the same token.
-HTTP_HOST=${INGESTING_HOST/-datadog/}
 STREAK=0
 DEADLINE=$((SECONDS + 300))
 while [ "$STREAK" -lt 20 ]; do
-  CODE=$(curl -sS -m 10 -o /dev/null -w '%{http_code}' -X POST "https://$HTTP_HOST/" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d "$PROBE") || true
+  CODE=$(curl -sS -m 10 -o /dev/null -w '%{http_code}' -X POST "https://$INGESTING_HOST/" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d "$PROBE") || true
   if [ "$CODE" = 202 ]; then STREAK=$((STREAK + 1)); else echo "ingest answered HTTP $CODE after $STREAK accepted in a row"; STREAK=0; fi
   [ "$SECONDS" -lt "$DEADLINE" ] || { echo "::error::ingest did not accept the token of source $ID 20 times in a row within 5 min"; exit 1; }
   sleep 1
