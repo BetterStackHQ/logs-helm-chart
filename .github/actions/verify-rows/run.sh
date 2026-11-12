@@ -30,7 +30,15 @@ summarize() {
       echo
       echo "<details><summary>One stored row per check</summary>"
       echo
-      jq -rs '.[] | "**\(.name)**\n\n```json\n\(.sample | if . == null then "nothing stored matches the condition" else tojson end)\n```\n"' "$OUT"/check-*.json
+      local result
+      for result in "$OUT"/check-*.json; do
+        echo "**$(jq -r .name "$result")**"
+        echo
+        echo '```json'
+        jq -r '.sample // "nothing stored matches the condition"' "$result"
+        echo '```'
+        echo
+      done
       echo "</details>"
     else
       echo "- ❌ ${FAILURE:-stopped on an error, see the log of this step}"
