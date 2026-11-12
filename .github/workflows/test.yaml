@@ -1,5 +1,10 @@
 name: End-to-end test
 
+# Installs the last release of the chart into Minikube, the way the README says, and proves that it delivers: the job
+# creates its own source in Better Stack's E2E testing team, runs a Hello World pod, reads the pod's log and the pod
+# metrics back through the team's SQL API connection, checks their shape and deletes the source again.
+# Secrets: TEST_TEAM_TELEMETRY_API, TEST_TEAM_CONNECTION_USERNAME, TEST_TEAM_CONNECTION_PASSWORD, LINEAR_*.
+
 on:
   push:
     paths:
@@ -23,10 +28,18 @@ jobs:
       - name: Check cluster pods
         run: kubectl get pods -A
 
+      - name: Create a source
+        id: source
+        uses: ./.github/actions/create-source
+        with:
+          api-token: ${{ secrets.TEST_TEAM_TELEMETRY_API }}
+          name: e2e-logs-helm-chart-gh${{ github.run_id }}a${{ github.run_attempt }}
+          platform: kubernetes
+
       - name: 1. Add Helm repository
         run: helm repo add betterstack-logs https://betterstackhq.github.io/logs-helm-chart && helm repo update
       - name: 2. Set up Helm chart
-        run: sed -e 's/$SOURCE_TOKEN/${{ secrets.HELM_E2E_TEST_SOURCE_TOKEN }}/g' -e 's/$INGESTING_HOST/${{ secrets.HELM_E2E_TEST_INGESTING_HOST }}/g' .github/helm-values-template.yaml > values.yaml
+        run: sed -e 's/$SOURCE_TOKEN/${{ steps.source.outputs.token }}/g' -e 's/$INGESTING_HOST/${{ steps.source.outputs.ingesting-host }}/g' .github/helm-values-template.yaml > values.yaml
       - name: 3. Deploy the chart
         run: helm install betterstack-logs betterstack-logs/betterstack-logs -f values.yaml
 
@@ -58,6 +71,33 @@ jobs:
 
       - name: Check if all pods are running
         run: kubectl get pods -A -o jsonpath='{range .items[*]}{.status.phase}{"\n"}{end}' | grep -qv "^Running$" && echo "Not all pods are running" && exit 1 || echo "OK"
+
+      - name: Read the stored rows back
+        uses: ./.github/actions/verify-rows
+        with:
+          connection-username: ${{ secrets.TEST_TEAM_CONNECTION_USERNAME }}
+          connection-password: ${{ secrets.TEST_TEAM_CONNECTION_PASSWORD }}
+          connect-host: ${{ steps.source.outputs.connect-host }}
+          collection: ${{ steps.source.outputs.collection }}
+          checks: |
+            [
+              {"name": "the log of the Hello World pod", "in": "logs",
+               "where": "JSONExtractString(raw, 'message') = 'Hello from Docker!'",
+               "contains": {"platform": "Kubernetes",
+                            "kubernetes": {"pod_name": "hello-world", "pod_namespace": "default", "container_name": "hello-world"}}},
+              {"name": "the memory metric of a pod", "in": "metrics", "where": "name = 'memory_bytes'",
+               "contains": {"tags": {"metrics_kind": "PodMetricsList"}}},
+              {"name": "the CPU metric of a pod", "in": "metrics", "where": "name = 'cpu_ratio'",
+               "contains": {"tags": {"metrics_kind": "PodMetricsList"}}}
+            ]
+
+      - name: Delete this job's source and stale ones of earlier runs
+        if: ${{ always() }}
+        uses: ./.github/actions/cleanup-sources
+        with:
+          api-token: ${{ secrets.TEST_TEAM_TELEMETRY_API }}
+          prefix: e2e-logs-helm-chart-
+          id: ${{ steps.source.outputs.id }}
 
   notify-linear:
     if: ${{ failure() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.event_name == 'schedule') }}
