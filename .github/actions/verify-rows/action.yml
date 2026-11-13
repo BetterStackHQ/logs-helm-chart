@@ -1,0 +1,46 @@
+# Reads a source's stored logs, spans and metrics back through the team's SQL API connection and checks that the
+# rows an agent was expected to deliver are there, in the expected shape.
+# The logic is in run.sh, which reads only environment variables, so it runs the same way outside of Actions.
+name: "Verify stored rows"
+description: "Polls a source's stored logs, spans and metrics until every check finds a row of the expected shape"
+
+inputs:
+  connection-username:
+    description: "Username of the team's SQL API connection"
+    required: true
+  connection-password:
+    description: "Password of the team's SQL API connection"
+    required: true
+  connect-host:
+    description: "SQL API host, the connect-host output of create-source"
+    required: true
+  collection:
+    description: "Collection to read, the collection output of create-source"
+    required: true
+  checks:
+    description: >-
+      JSON array of checks, each {"name": ..., "in": "logs" | "spans" | "metrics"} with an optional "where" (a SQL
+      condition that picks the rows) and an optional "contains" (an object a picked row must hold). Logs and spans
+      are picked by their raw JSON, e.g. "where": "JSONExtractString(raw, 'message') LIKE '%hello'". Metrics are
+      {"name": ..., "tags": {...}} rows, e.g. "where": "name = 'up'", "contains": {"tags": {"job": "node"}}.
+    required: true
+  out:
+    description: "Directory for summary.md"
+    default: out
+  deadline-seconds:
+    description: "How long to wait for every check to find its row"
+    default: "300"
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        INPUT_CONNECTION_USERNAME: ${{ inputs.connection-username }}
+        INPUT_CONNECTION_PASSWORD: ${{ inputs.connection-password }}
+        INPUT_CONNECT_HOST: ${{ inputs.connect-host }}
+        INPUT_COLLECTION: ${{ inputs.collection }}
+        INPUT_CHECKS: ${{ inputs.checks }}
+        INPUT_OUT: ${{ inputs.out }}
+        INPUT_DEADLINE_SECONDS: ${{ inputs.deadline-seconds }}
+      run: bash "${{ github.action_path }}/run.sh"
