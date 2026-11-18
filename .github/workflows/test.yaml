@@ -66,8 +66,9 @@ jobs:
       - name: Check that Vector logged no errors or warnings while the pods were running
         run: |
           kubectl logs -l 'app.kubernetes.io/name in (vector, vector-aggregator)' --prefix --tail=-1 --since-time="$OBSERVED_SINCE" > vector-observed.log
-          # Requests to the ingesting endpoint that Vector retries are transient network errors, not chart defects
-          grep -vE 'sink\{.*(vector::internal_events::http_client: HTTP error|vector::sinks::util::retries: Retrying after error)' vector-observed.log | grep -E '^\[[^]]+\] \S+ +(WARN|ERROR) ' && echo "Vector logged errors or warnings" && exit 1 || echo "OK"
+          # Requests to the ingesting endpoint that Vector retries are transient network errors, not chart defects.
+          # When the same error repeats, Vector logs "Internal log [HTTP error.] is being suppressed" in its place.
+          grep -vE 'sink\{.*(vector::internal_events::http_client: (HTTP error|Internal log \[HTTP error\.\])|vector::sinks::util::retries: (Retrying after error|Internal log \[Retrying after error\.\]))' vector-observed.log | grep -E '^\[[^]]+\] \S+ +(WARN|ERROR) ' && echo "Vector logged errors or warnings" && exit 1 || echo "OK"
 
       - name: Check if all pods are running
         run: kubectl get pods -A -o jsonpath='{range .items[*]}{.status.phase}{"\n"}{end}' | grep -qv "^Running$" && echo "Not all pods are running" && exit 1 || echo "OK"
